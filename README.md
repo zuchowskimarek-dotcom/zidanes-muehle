@@ -24,11 +24,21 @@ Einfach `index.html` im Browser öffnen — keine Installation, keine Abhängigk
 - Animationen, Sounds (abschaltbar), Undo-Knopf und Konfetti für den Sieger
 - Design nach Zidans echtem Spielbrett: Safran-orangenes Brett, elfenbeinfarbene und schwarze Steine
 
+## Intro
+
+`intro.html` ist ein ~16-sekündiges 3D-Kino-Intro (Three.js, in Echtzeit gerendert):
+eine stürmische Mondnacht auf See, ein Piratenschiff mit Strohhut-Totenkopf-Flagge 🏴‍☠️,
+das Mühle-Brett steigt wie ein Schatz aus der Tiefe, eine goldene Mühle blitzt auf —
+dann der Titel und „Jetzt spielen". Mit prozeduralem Sound (Donner, Meer, Fanfare),
+komplett offline, keine Videodatei. Erreichbar über „🎬 Intro ansehen" im Startmenü.
+
 ## Dateien
 
 | Datei | Zweck |
 |---|---|
 | `index.html` | Komplettes, eigenständiges Spiel (Deployment-Ziel) |
 | `zidanes-muehle.html` | Quelldatei als HTML-Fragment (für Claude-Artifacts) |
+| `intro.html` | 3D-Kino-Intro (Three.js) |
+| `three.min.js` | Three.js r147 (lokal, kein CDN) |
 
 Kein Build-Schritt: `index.html` wird aus dem Fragment erzeugt, indem es in ein `<!DOCTYPE html>`-Gerüst gehüllt wird.

@@ -365,6 +365,7 @@
     <button class="menuBtn primary" id="btnAi"><span class="em">&#129302;</span> Gegen den Computer</button>
     <button class="menuBtn" id="btn2p"><span class="em">&#129485;&#8205;&#129309;&#8205;&#129485;</span> Zu zweit am Handy</button>
     <button class="linkBtn" id="btnRules">Wie spielt man M&uuml;hle?</button>
+    <button class="linkBtn" id="btnIntro" style="display:none;">&#127916; Intro ansehen</button>
   </div>
 </div>
 
@@ -1220,6 +1221,11 @@
   $("btnLevelBack").addEventListener("pointerdown", function(){ show("levelOverlay", false); show("startOverlay", true); });
   $("btn2p").addEventListener("pointerdown", function(){ audio(); startGame("2p"); });
   $("btnRules").addEventListener("pointerdown", function(){ show("rulesOverlay", true); });
+  /* intro page ships with the website, not with the claude.ai artifact */
+  if(!/claude/.test(location.hostname)){
+    $("btnIntro").style.display = "inline-block";
+    $("btnIntro").addEventListener("pointerdown", function(){ location.href = "intro.html"; });
+  }
   $("btnRulesClose").addEventListener("pointerdown", function(){ show("rulesOverlay", false); });
   $("btnAgain").addEventListener("pointerdown", function(){ startGame(mode, aiLevel); });
   $("btnNext").addEventListener("pointerdown", function(){ if(justUnlocked) startGame("ai", justUnlocked); });
