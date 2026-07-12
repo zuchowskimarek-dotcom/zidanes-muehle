@@ -11,6 +11,14 @@ Einfach `index.html` im Browser öffnen — keine Installation, keine Abhängigk
 ## Features
 
 - 🤖 **Gegen den Computer** oder 👥 **zu zweit** am selben Handy
+- **5 Schwierigkeitsgrade** mit Freischalt-System — 3 Siege öffnen das nächste Level (Fortschritt wird auf dem Gerät gespeichert):
+  | Level | Name | Gegner |
+  |---|---|---|
+  | 1 | 🐣 Kinderleicht | Spielt meist zufällig, übersieht Mühlen |
+  | 2 | 🙂 Locker | Heuristik: vervollständigt und blockiert Mühlen |
+  | 3 | 🦊 Schlau | Minimax-Suche, 3 Halbzüge tief |
+  | 4 | 💪 Wettkampf | Minimax-Suche, 5 Halbzüge tief |
+  | 5 | 🧠 Profi | Iterative Suche bis 9 Halbzüge (max. 1 s Denkzeit) |
 - Vollständige Mühle-Regeln: Setzen, Ziehen, Fliegen (bei 3 Steinen), Mühlen mit Schlag-Regeln, beide Gewinnbedingungen
 - Blaue Punkte zeigen immer, wo man tippen darf; rote Ringe markieren schlagbare Steine
 - Animationen, Sounds (abschaltbar), Undo-Knopf und Konfetti für den Sieger

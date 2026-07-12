@@ -250,6 +250,12 @@
     font-family:inherit; font-weight:800; font-size:15px;
     margin-top:10px; cursor:pointer; padding:8px;
   }
+  .levelBtn{ margin:7px 0; padding:12px 15px; }
+  .levelBtn .lvName{ flex:1; display:flex; flex-direction:column; align-items:flex-start; line-height:1.2; }
+  .levelBtn .lvName small{ font-size:11.5px; color:var(--muted); font-weight:700; }
+  .levelBtn .pips{ color:var(--gold); font-size:16px; letter-spacing:2px; flex:none; }
+  .levelBtn.locked{ opacity:.45; pointer-events:none; box-shadow:none; }
+  .progressNote{ color:var(--gold); font-weight:900; font-size:15.5px; margin:0 0 14px; display:none; }
   .rules{ text-align:left; font-size:15px; line-height:1.45; font-weight:600; }
   .rules p{ margin:11px 0; }
   .rules b{ font-weight:900; }
@@ -362,6 +368,16 @@
   </div>
 </div>
 
+<!-- Level select -->
+<div class="overlay hidden" id="levelOverlay">
+  <div class="sheet">
+    <h2>W&auml;hl dein Level</h2>
+    <p class="sub">3 Siege schalten das n&auml;chste Level frei &#128275;</p>
+    <div id="levelList"></div>
+    <button class="linkBtn" id="btnLevelBack">Zur&uuml;ck</button>
+  </div>
+</div>
+
 <!-- Rules -->
 <div class="overlay hidden" id="rulesOverlay">
   <div class="sheet">
@@ -380,9 +396,11 @@
 <!-- Win -->
 <div class="overlay hidden" id="winOverlay">
   <div class="sheet" id="winSheet">
-    <div class="trophy">&#127942;</div>
+    <div class="trophy" id="winTrophy">&#127942;</div>
     <h2 id="winTitle">Gewonnen!</h2>
     <p id="winReason"></p>
+    <p id="winProgress" class="progressNote"></p>
+    <button class="menuBtn primary" id="btnNext" style="justify-content:center; display:none;">Level spielen!</button>
     <button class="menuBtn primary" id="btnAgain" style="justify-content:center;">Nochmal spielen!</button>
     <button class="menuBtn" id="btnToMenu" style="justify-content:center;">Zur&uuml;ck zum Men&uuml;</button>
   </div>
@@ -424,6 +442,23 @@
   /* ── State ──────────────────────────────── */
   var S = null;           // {board, hand:[_,w,b], turn, removing, selected, winner, reason}
   var mode = null;        // 'ai' | '2p'
+  var aiLevel = 2;        // 1..5, only relevant in 'ai' mode
+  var aiPlan = null;      // removal planned by the search engine
+  var justUnlocked = 0;   // level freshly unlocked by the last win
+
+  var LEVELS = [null,
+    { n:"Kinderleicht", em:"🐣" },
+    { n:"Locker",       em:"🙂" },
+    { n:"Schlau",       em:"🦊" },
+    { n:"Wettkampf",    em:"💪" },
+    { n:"Profi",        em:"🧠" }
+  ];
+  var SEARCH_CFG = { 3:{d:3, ms:250}, 4:{d:5, ms:600}, 5:{d:9, ms:1000} };
+
+  var prog = { w:[0,0,0,0,0,0] };  // wins per level (index 1..5)
+  try{ var sp = JSON.parse(localStorage.getItem("zm_prog")||"null"); if(sp && sp.w && sp.w.length===6) prog = sp; }catch(e){}
+  function saveProg(){ try{ localStorage.setItem("zm_prog", JSON.stringify(prog)); }catch(e){} }
+  function levelUnlocked(lv){ return lv===1 || prog.w[lv-1]>=3; }
   var history = [];
   var pieceEls = {};      // point index -> <g> element
   var aiTimer = null;
@@ -434,7 +469,7 @@
     return { board:new Array(24).fill(0), hand:[0,9,9], turn:1, removing:false, selected:null, winner:0, reason:"" };
   }
   function other(p){ return p===1 ? 2 : 1; }
-  function names(){ return mode==="ai" ? {1:"Zidan",2:"Computer"} : {1:"Weiß",2:"Schwarz"}; }
+  function names(){ return mode==="ai" ? {1:"Zidan",2:"Computer · L"+aiLevel} : {1:"Weiß",2:"Schwarz"}; }
   function countOn(board,p){ var n=0; for(var i=0;i<24;i++) if(board[i]===p) n++; return n; }
   function totalPieces(p){ return countOn(S.board,p) + S.hand[p]; }
   function placing(p){ return S.hand[p] > 0; }
@@ -664,12 +699,18 @@
 
   function setWinner(p, reason){
     S.winner = p; S.reason = reason;
+    justUnlocked = 0;
+    if(mode==="ai" && p===1){
+      prog.w[aiLevel]++;
+      if(prog.w[aiLevel]===3 && aiLevel<5) justUnlocked = aiLevel+1;
+      saveProg();
+    }
     snd.win();
     setTimeout(showWin, 750);
   }
 
   /* ── Computer opponent ──────────────────── */
-  var rndSeed = 1;
+  var rndSeed = (Date.now() % 2147483647) || 1;
   function rnd(){ rndSeed = (rndSeed*1103515245 + 12345) & 0x7fffffff; return rndSeed/0x7fffffff; }
 
   function reachableBy(board, p, spot, isPlacing){
@@ -695,6 +736,65 @@
   }
 
   function aiStep(){
+    if(!S || S.winner || S.turn!==2) return;
+    if(aiLevel===1) return aiEasy();
+    if(aiLevel===2) return aiHeuristic();
+    return aiSearchStep(SEARCH_CFG[aiLevel]);
+  }
+
+  /* Level 1 — easy peasy: mostly random, only sometimes sees mills */
+  function aiEasy(){
+    if(S.removing){
+      var r = removableSet(1);
+      doRemove(r[Math.floor(rnd()*r.length)]);
+      return;
+    }
+    if(placing(2)){
+      var c2 = completions(S.board,2);
+      if(c2.length && rnd()<0.4){ doPlace(c2[Math.floor(rnd()*c2.length)]); return; }
+      var c1 = completions(S.board,1);
+      if(c1.length && rnd()<0.25){ doPlace(c1[Math.floor(rnd()*c1.length)]); return; }
+      var e=[]; for(var i=0;i<24;i++) if(S.board[i]===0) e.push(i);
+      doPlace(e[Math.floor(rnd()*e.length)]);
+      return;
+    }
+    var moves=[];
+    for(var f=0; f<24; f++){
+      if(S.board[f]!==2) continue;
+      var ts = flying(2) ? S.board.map(function(v,idx){return v===0?idx:-1;}).filter(function(v){return v>=0;})
+                         : ADJ[f].filter(function(n){ return S.board[n]===0; });
+      ts.forEach(function(t){ moves.push([f,t]); });
+    }
+    if(!moves.length) return;
+    if(rnd()<0.4){
+      for(var k=0;k<moves.length;k++){
+        var b = S.board.slice(); b[moves[k][0]]=0; b[moves[k][1]]=2;
+        if(inMill(b,moves[k][1])){ doMove(moves[k][0],moves[k][1]); return; }
+      }
+    }
+    var mv = moves[Math.floor(rnd()*moves.length)];
+    doMove(mv[0],mv[1]);
+  }
+
+  /* Levels 3–5 — minimax search; removal is planned as part of the move */
+  function aiSearchStep(cfg){
+    if(S.removing){
+      if(aiPlan && aiPlan.rem>=0 && S.board[aiPlan.rem]===1 && removableSet(1).indexOf(aiPlan.rem)>=0){
+        var rem = aiPlan.rem; aiPlan = null;
+        doRemove(rem);
+      } else { aiPlan = null; aiRemove(); }
+      return;
+    }
+    var st = { b:S.board.slice(), h:[0,S.hand[1],S.hand[2]], t:2 };
+    var mv = eSearch(st, cfg.d, cfg.ms, rnd);
+    if(!mv) return;
+    aiPlan = mv;
+    if(mv.from<0) doPlace(mv.to); else doMove(mv.from, mv.to);
+    if(!S.removing) aiPlan = null;
+  }
+
+  /* Level 2 — the original heuristic opponent */
+  function aiHeuristic(){
     if(!S || S.winner || S.turn!==2) return;
 
     if(S.removing){ aiRemove(); return; }
@@ -761,10 +861,157 @@
     doRemove(best);
   }
 
+  /* ── ENGINE START (levels 3–5): pure minimax + alpha-beta ──
+     Self-contained: only uses MILLS, ADJ, CROSS. State st = {b, h, t}. */
+  var E_TIMEOUT = { timeout:true };
+  function eNow(){ return (typeof performance!=="undefined" && performance.now) ? performance.now() : Date.now(); }
+  function eOther(p){ return p===1?2:1; }
+  function eCount(b,p){ var n=0; for(var i=0;i<24;i++) if(b[i]===p) n++; return n; }
+  function eMillAt(b,i){
+    var p=b[i]; if(!p) return false;
+    for(var m=0;m<MILLS.length;m++){
+      var mm=MILLS[m];
+      if((mm[0]===i||mm[1]===i||mm[2]===i) && b[mm[0]]===p && b[mm[1]]===p && b[mm[2]]===p) return true;
+    }
+    return false;
+  }
+  function eRemovables(b,victim){
+    var all=[], free=[];
+    for(var i=0;i<24;i++) if(b[i]===victim){ all.push(i); if(!eMillAt(b,i)) free.push(i); }
+    return free.length ? free : all;
+  }
+  function eGenMoves(st){
+    var p=st.t, o=eOther(p), out=[];
+    function add(from,to){
+      var b2=st.b.slice();
+      if(from>=0) b2[from]=0;
+      b2[to]=p;
+      if(eMillAt(b2,to)){
+        var rem=eRemovables(b2,o);
+        for(var k=0;k<rem.length;k++) out.push({from:from,to:to,rem:rem[k]});
+      } else out.push({from:from,to:to,rem:-1});
+    }
+    if(st.h[p]>0){
+      for(var i=0;i<24;i++) if(st.b[i]===0) add(-1,i);
+    } else if(eCount(st.b,p)===3){
+      for(var f=0;f<24;f++) if(st.b[f]===p)
+        for(var t=0;t<24;t++) if(st.b[t]===0) add(f,t);
+    } else {
+      for(var f2=0;f2<24;f2++) if(st.b[f2]===p)
+        for(var k2=0;k2<ADJ[f2].length;k2++) if(st.b[ADJ[f2][k2]]===0) add(f2,ADJ[f2][k2]);
+    }
+    return out;
+  }
+  function eApply(st,m){
+    var b=st.b.slice(), h=st.h.slice();
+    if(m.from<0) h[st.t]--; else b[m.from]=0;
+    b[m.to]=st.t;
+    if(m.rem>=0) b[m.rem]=0;
+    return { b:b, h:h, t:eOther(st.t) };
+  }
+  function eMills(b,p){
+    var n=0;
+    for(var m=0;m<MILLS.length;m++){ var mm=MILLS[m]; if(b[mm[0]]===p&&b[mm[1]]===p&&b[mm[2]]===p) n++; }
+    return n;
+  }
+  function eOpenTwos(b,p){
+    var n=0;
+    for(var m=0;m<MILLS.length;m++){
+      var mm=MILLS[m], mine=0, emp=0;
+      for(var k=0;k<3;k++){ if(b[mm[k]]===p) mine++; else if(b[mm[k]]===0) emp++; }
+      if(mine===2 && emp===1) n++;
+    }
+    return n;
+  }
+  function eMobility(b,p){
+    if(eCount(b,p)===3) return eCount(b,0)*2; /* flying */
+    var n=0;
+    for(var f=0;f<24;f++) if(b[f]===p)
+      for(var k=0;k<ADJ[f].length;k++) if(b[ADJ[f][k]]===0) n++;
+    return n;
+  }
+  function eLost(st){ /* has the side to move already lost? */
+    if(eCount(st.b,st.t)+st.h[st.t] < 3) return true;
+    if(st.h[st.t]>0) return false;
+    if(eCount(st.b,st.t)===3) return st.b.indexOf(0)<0;
+    for(var f=0;f<24;f++) if(st.b[f]===st.t)
+      for(var k=0;k<ADJ[f].length;k++) if(st.b[ADJ[f][k]]===0) return false;
+    return true;
+  }
+  function eEval(st){ /* score from Player 2's perspective */
+    var b=st.b;
+    var sc = (eCount(b,2)+st.h[2] - eCount(b,1)-st.h[1]) * 100;
+    sc += (eMills(b,2)-eMills(b,1)) * 60;
+    sc += (eOpenTwos(b,2)-eOpenTwos(b,1)) * 14;
+    if(st.h[1]===0 && st.h[2]===0){
+      sc += (eMobility(b,2)-eMobility(b,1)) * 6;
+    } else {
+      var c=0;
+      for(var k=0;k<CROSS.length;k++){ if(b[CROSS[k]]===2) c++; else if(b[CROSS[k]]===1) c--; }
+      sc += c*9;
+    }
+    return sc;
+  }
+  function eAB(st, depth, alpha, beta, deadline){
+    if(eLost(st)) return st.t===2 ? -(80000+depth*10) : (80000+depth*10);
+    if(depth===0) return eEval(st);
+    if(eNow()>deadline) throw E_TIMEOUT;
+    var moves = eGenMoves(st);
+    moves.sort(function(a,b2){ return (b2.rem>=0)-(a.rem>=0); }); /* captures first */
+    var i, v, best;
+    if(st.t===2){
+      best=-Infinity;
+      for(i=0;i<moves.length;i++){
+        v = eAB(eApply(st,moves[i]), depth-1, alpha, beta, deadline);
+        if(v>best) best=v;
+        if(best>alpha) alpha=best;
+        if(alpha>=beta) break;
+      }
+      return best;
+    }
+    best=Infinity;
+    for(i=0;i<moves.length;i++){
+      v = eAB(eApply(st,moves[i]), depth-1, alpha, beta, deadline);
+      if(v<best) best=v;
+      if(best<beta) beta=best;
+      if(alpha>=beta) break;
+    }
+    return best;
+  }
+  function eSearch(st, maxDepth, budgetMs, rand){ /* iterative deepening; st.t is the maximizing player 2 */
+    var moves = eGenMoves(st);
+    if(!moves.length) return null;
+    if(moves.length===1) return moves[0];
+    for(var i=moves.length-1;i>0;i--){ /* shuffle for variety */
+      var j=Math.floor(rand()*(i+1)), tmp=moves[i]; moves[i]=moves[j]; moves[j]=tmp;
+    }
+    var deadline = eNow()+budgetMs;
+    var best = moves[0];
+    for(var d=1; d<=maxDepth; d++){
+      try{
+        var alpha=-Infinity, localBest=null, scored=[];
+        for(var k=0;k<moves.length;k++){
+          var v = eAB(eApply(st,moves[k]), d-1, alpha, Infinity, deadline);
+          scored.push({m:moves[k], v:v});
+          if(v>alpha){ alpha=v; localBest=moves[k]; }
+        }
+        if(localBest) best = localBest;
+        scored.sort(function(a,b2){ return b2.v-a.v; });
+        moves = scored.map(function(s){ return s.m; }); /* best-first for next depth */
+      }catch(err){
+        if(err===E_TIMEOUT) break;
+        throw err;
+      }
+    }
+    return best;
+  }
+  /* ── ENGINE END ── */
+
   function maybeAI(){
     clearTimeout(aiTimer); aiTimer = null;
     if(mode==="ai" && S && !S.winner && S.turn===2){
-      aiTimer = setTimeout(function(){ aiTimer=null; aiStep(); }, S.removing ? 800 : 700);
+      var delay = aiLevel>=3 ? (S.removing ? 500 : 350) : (S.removing ? 800 : 700);
+      aiTimer = setTimeout(function(){ aiTimer=null; aiStep(); }, delay);
     }
   }
 
@@ -867,10 +1114,32 @@
   function showWin(){
     if(!S || !S.winner) return;
     var n = names();
-    $("winTitle").textContent = (mode==="ai" && S.winner===1 ? "Zidan gewinnt!" : n[S.winner] + " gewinnt!");
+    var aiWon = mode==="ai" && S.winner===2;
+    $("winTrophy").textContent = aiWon ? "🤖" : "🏆";
+    $("winTitle").textContent = (mode==="ai" && S.winner===1 ? "Zidan gewinnt!" : (aiWon ? "Der Computer gewinnt!" : n[S.winner] + " gewinnt!"));
     $("winReason").textContent = S.reason;
+    var pr = $("winProgress"), nxt = $("btnNext");
+    pr.style.display = "none"; nxt.style.display = "none";
+    if(mode==="ai" && S.winner===1){
+      if(justUnlocked){
+        pr.textContent = "🔓 Level " + justUnlocked + " · " + LEVELS[justUnlocked].n + " freigeschaltet!";
+        pr.style.display = "block";
+        nxt.textContent = LEVELS[justUnlocked].em + " Level " + justUnlocked + " spielen!";
+        nxt.style.display = "flex";
+      } else if(aiLevel<5 && prog.w[aiLevel]<3){
+        pr.textContent = "⭐ Sieg " + prog.w[aiLevel] + " von 3 auf Level " + aiLevel +
+          " – noch " + (3-prog.w[aiLevel]) + " bis Level " + (aiLevel+1) + "!";
+        pr.style.display = "block";
+      } else if(aiLevel===5 && prog.w[5]>=3){
+        pr.textContent = "🏅 Du bist ein echter Mühle-Profi!";
+        pr.style.display = "block";
+      }
+    } else if(aiWon){
+      pr.textContent = "Versuch's gleich nochmal – du schaffst das!";
+      pr.style.display = "block";
+    }
     show("winOverlay", true);
-    confetti();
+    if(!aiWon) confetti();
   }
   function confetti(){
     var colors = ["#FFC53D","#4FC3F7","#FF6B6B","#7BC96F","#F2A94E","#F2E7C4"];
@@ -887,20 +1156,22 @@
     }
   }
 
-  function startGame(m){
-    clearTimeout(aiTimer); aiTimer=null;
+  function startGame(m, level){
+    clearTimeout(aiTimer); aiTimer=null; aiPlan=null;
     mode = m;
+    if(m==="ai" && level) aiLevel = level;
     S = freshState();
     history = [];
     rebuildPieces();
     show("startOverlay", false);
+    show("levelOverlay", false);
     show("winOverlay", false);
     render();
   }
 
   function undo(){
     if(!history.length) return;
-    clearTimeout(aiTimer); aiTimer=null;
+    clearTimeout(aiTimer); aiTimer=null; aiPlan=null;
     while(history.length){
       var s = history.pop();
       if(mode==="2p" || s.turn===1){ S = s; break; }
@@ -923,11 +1194,35 @@
   });
   $("undoBtn").addEventListener("pointerdown", undo);
   $("menuBtn").addEventListener("pointerdown", function(){ show("startOverlay", true); });
-  $("btnAi").addEventListener("pointerdown", function(){ audio(); startGame("ai"); });
+  function renderLevels(){
+    var box = $("levelList");
+    box.innerHTML = "";
+    for(var lv=1; lv<=5; lv++){
+      (function(l){
+        var open = levelUnlocked(l);
+        var b = document.createElement("button");
+        b.className = "menuBtn levelBtn" + (open ? "" : " locked");
+        var stars = "";
+        for(var s=0;s<3;s++) stars += (prog.w[l]>s ? "★" : "☆");
+        b.innerHTML =
+          "<span class='em'>" + (open ? LEVELS[l].em : "🔒") + "</span>" +
+          "<span class='lvName'>Level " + l + " · " + LEVELS[l].n +
+            (open ? "" : "<small>Gewinn 3× Level " + (l-1) + "</small>") +
+          "</span>" +
+          (open ? "<span class='pips'>" + stars + "</span>" : "");
+        if(open) b.addEventListener("pointerdown", function(){ audio(); startGame("ai", l); });
+        box.appendChild(b);
+      })(lv);
+    }
+  }
+
+  $("btnAi").addEventListener("pointerdown", function(){ audio(); renderLevels(); show("startOverlay", false); show("levelOverlay", true); });
+  $("btnLevelBack").addEventListener("pointerdown", function(){ show("levelOverlay", false); show("startOverlay", true); });
   $("btn2p").addEventListener("pointerdown", function(){ audio(); startGame("2p"); });
   $("btnRules").addEventListener("pointerdown", function(){ show("rulesOverlay", true); });
   $("btnRulesClose").addEventListener("pointerdown", function(){ show("rulesOverlay", false); });
-  $("btnAgain").addEventListener("pointerdown", function(){ startGame(mode); });
+  $("btnAgain").addEventListener("pointerdown", function(){ startGame(mode, aiLevel); });
+  $("btnNext").addEventListener("pointerdown", function(){ if(justUnlocked) startGame("ai", justUnlocked); });
   $("btnToMenu").addEventListener("pointerdown", function(){ show("winOverlay", false); show("startOverlay", true); });
 
   renderSoundBtn();
