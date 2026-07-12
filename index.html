@@ -32,14 +32,14 @@
     25%{ opacity:1; } to{ letter-spacing:.06em; transform:scale(1); } }
   #subtitle{ margin-top:12px; color:#b9c4d8; font-weight:700; font-size:13px;
     letter-spacing:.34em; text-transform:uppercase; opacity:.85; }
-  #playBtn{ pointer-events:auto; margin-top:36px; cursor:pointer;
+  #playBtn{ pointer-events:none; margin-top:36px; cursor:pointer;
     border:2px solid rgba(240,199,94,.55);
     background:linear-gradient(180deg,rgba(240,199,94,.18),rgba(240,199,94,.05));
     color:#f0c75e; font-family:inherit; font-weight:900; font-size:18px;
     padding:14px 30px; border-radius:999px; letter-spacing:.08em;
     opacity:0; transform:translateY(14px); transition:opacity .8s ease, transform .8s ease;
     box-shadow:0 0 26px rgba(240,199,94,.28), inset 0 0 12px rgba(240,199,94,.12); }
-  #playBtn.show{ opacity:1; transform:none; }
+  #playBtn.show{ opacity:1; transform:none; pointer-events:auto; }
   #playBtn:active{ transform:scale(.96); }
 
   #skip{ position:fixed; z-index:4; top:calc(env(safe-area-inset-top,0px) + 12px); right:16px;
@@ -70,7 +70,7 @@
   <button id="playBtn">&#9876;&#65039; Jetzt spielen</button>
 </div>
 
-<div id="soundHint">&#127925; Tippen f&uuml;r Musik &amp; Ton</div>
+<div id="soundHint" style="display:none;">&#127925; F&uuml;r Musik tippen</div>
 
 <script src="three.min.js"></script>
 <script>
@@ -357,7 +357,9 @@ scene.add(boardGrp);
 /* ═══════════ Audio (procedural, WebAudio) ═══════════ */
 var actx=null, master=null;
 function audioInit(){
+  if(actx) return;
   try{ actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return; }
+  actx.onstatechange=function(){ if(actx.state==="running") onAudioLive(); };
   master=actx.createGain(); master.gain.value=0.8; master.connect(actx.destination);
   /* deep drone */
   [55,58.3].forEach(function(f,i){
@@ -624,8 +626,11 @@ function tick(now){
 }
 
 /* ═══════════ Autostart ═══════════
-   The cinematic starts immediately on page load; iOS only allows sound
-   after a user gesture, so the first tap anywhere enables the audio. */
+   Visuals start immediately. Audio starts as early as the browser allows:
+   we create the context on load and retry resume() continuously, so on
+   browsers that permit autoplay the music plays with zero interaction.
+   Where the platform blocks it (iOS Safari before the first touch), the
+   very first touch of any kind — anywhere on the page — starts it. */
 function start(){
   if(started) return;
   started=true;
@@ -633,12 +638,37 @@ function start(){
   t0=performance.now()/1000;
   requestAnimationFrame(tick);
 }
-function enableAudio(){
-  if(actx) return;
-  audioInit();
-  document.getElementById("soundHint").classList.add("hide");
+
+var audioLive=false;
+function onAudioLive(){
+  if(audioLive) return;
+  audioLive=true;
+  var h=document.getElementById("soundHint");
+  h.classList.add("hide");
+  setTimeout(function(){ h.style.display="none"; }, 600);
 }
-window.addEventListener("pointerdown", enableAudio);
+function tryAudio(){
+  audioInit();
+  if(actx && actx.state==="suspended"){
+    var p=actx.resume();
+    if(p && p.catch) p.catch(function(){});
+  }
+  if(actx && actx.state==="running") onAudioLive();
+}
+tryAudio();
+var audioRetry=setInterval(function(){
+  if(audioLive){ clearInterval(audioRetry); return; }
+  tryAudio();
+}, 400);
+["pointerdown","touchstart","touchend","mousedown","keydown","click"].forEach(function(ev){
+  window.addEventListener(ev, tryAudio, {passive:true});
+});
+document.addEventListener("visibilitychange", function(){ if(!document.hidden) tryAudio(); });
+/* show the hint only if autoplay was actually blocked */
+setTimeout(function(){
+  if(!audioLive) document.getElementById("soundHint").style.display="block";
+}, 1200);
+
 document.getElementById("playBtn").addEventListener("pointerdown", function(){ location.href="game.html"; });
 start();
 })();
