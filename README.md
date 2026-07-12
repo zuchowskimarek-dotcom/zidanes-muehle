@@ -26,19 +26,22 @@ Einfach `index.html` im Browser öffnen — keine Installation, keine Abhängigk
 
 ## Intro
 
-`intro.html` ist ein ~16-sekündiges 3D-Kino-Intro (Three.js, in Echtzeit gerendert):
-eine stürmische Mondnacht auf See, ein Piratenschiff mit Strohhut-Totenkopf-Flagge 🏴‍☠️,
-das Mühle-Brett steigt wie ein Schatz aus der Tiefe, eine goldene Mühle blitzt auf —
-dann der Titel und „Jetzt spielen". Mit prozeduralem Sound (Donner, Meer, Fanfare),
-komplett offline, keine Videodatei. Erreichbar über „🎬 Intro ansehen" im Startmenü.
+Die Landing-Page (`index.html`) ist ein ~16-sekündiges 3D-Kino-Intro (Three.js, in
+Echtzeit gerendert), das bei **jedem Besuch** einmal abläuft: eine stürmische Mondnacht
+auf See, ein Piratenschiff mit Strohhut-Totenkopf-Flagge 🏴‍☠️, das Mühle-Brett steigt
+wie ein Schatz aus der Tiefe, eine goldene Mühle blitzt auf — dann der Titel und
+„Jetzt spielen" (→ `game.html`). Mit prozeduralem Sound (Donner, Meer, Fanfare; Ton
+startet nach dem ersten Tippen), komplett offline, keine Videodatei. „Überspringen"
+ist immer möglich; im Spielmenü gibt es „🎬 Intro ansehen" zum erneuten Anschauen.
 
 ## Dateien
 
 | Datei | Zweck |
 |---|---|
-| `index.html` | Komplettes, eigenständiges Spiel (Deployment-Ziel) |
-| `zidanes-muehle.html` | Quelldatei als HTML-Fragment (für Claude-Artifacts) |
-| `intro.html` | 3D-Kino-Intro (Three.js) |
+| `index.html` | Landing-Page = 3D-Intro (Kopie von `intro.html`) |
+| `game.html` | Komplettes, eigenständiges Spiel |
+| `intro.html` | 3D-Kino-Intro (Three.js), Quelldatei |
+| `zidanes-muehle.html` | Spiel-Quelldatei als HTML-Fragment (für Claude-Artifacts) |
 | `three.min.js` | Three.js r147 (lokal, kein CDN) |
 
 Kein Build-Schritt: `index.html` wird aus dem Fragment erzeugt, indem es in ein `<!DOCTYPE html>`-Gerüst gehüllt wird.

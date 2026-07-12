@@ -4,8 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#05070c">
-<title>Zidane's Mühle — Intro</title>
+<title>Zidane's Mühle</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>
   html,body{ margin:0; height:100%; background:#05070c; overflow:hidden;
     font-family:ui-rounded,"SF Pro Rounded",system-ui,sans-serif;
@@ -45,25 +48,21 @@
     text-decoration:none; letter-spacing:.04em; opacity:0; transition:opacity .6s; }
   #skip.show{ opacity:1; }
 
-  #gate{ position:fixed; inset:0; z-index:5; display:flex; flex-direction:column;
-    align-items:center; justify-content:center; gap:16px; cursor:pointer;
-    background:radial-gradient(120% 80% at 50% 18%, #101826, #05070c 70%); }
-  #gate .flag{ font-size:64px; filter:drop-shadow(0 8px 20px rgba(0,0,0,.7));
-    animation:bob 3s ease-in-out infinite; }
-  @keyframes bob{ 0%,100%{ transform:translateY(0) rotate(-3deg); } 50%{ transform:translateY(-10px) rotate(3deg); } }
-  #gate h1{ font-family:Luminari,Copperplate,fantasy; color:#f0c75e; font-size:26px;
-    letter-spacing:.12em; margin:0; text-align:center; }
-  #gate p{ color:#8b96ab; font-weight:700; letter-spacing:.3em; font-size:12px;
-    text-transform:uppercase; margin:0; animation:pulseTxt 1.6s ease-in-out infinite; }
-  @keyframes pulseTxt{ 50%{ opacity:.3; } }
-  #gate.hide{ display:none; }
+  #soundHint{ position:fixed; z-index:4; left:50%; transform:translateX(-50%);
+    bottom:calc(env(safe-area-inset-bottom,0px) + 18px);
+    color:#8b96ab; background:rgba(10,14,22,.55); border:1px solid rgba(139,150,171,.35);
+    border-radius:999px; padding:8px 16px; font-size:13px; font-weight:800;
+    letter-spacing:.04em; pointer-events:none;
+    animation:pulseTxt 1.8s ease-in-out infinite; transition:opacity .5s; }
+  #soundHint.hide{ opacity:0; }
+  @keyframes pulseTxt{ 50%{ opacity:.35; } }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <div class="vig"></div>
 <div id="flash"></div>
-<a id="skip" href="index.html">&Uuml;berspringen &rsaquo;</a>
+<a id="skip" href="game.html">&Uuml;berspringen &rsaquo;</a>
 
 <div id="titleWrap">
   <div id="title">ZIDANE&rsquo;S M&Uuml;HLE</div>
@@ -71,11 +70,7 @@
   <button id="playBtn">&#9876;&#65039; Jetzt spielen</button>
 </div>
 
-<div id="gate">
-  <div class="flag">&#127988;&#8205;&#9760;&#65039;</div>
-  <h1>ZIDANE&rsquo;S M&Uuml;HLE</h1>
-  <p>Tippen f&uuml;r das Intro</p>
-</div>
+<div id="soundHint">&#127925; Tippen f&uuml;r Musik &amp; Ton</div>
 
 <script src="three.min.js"></script>
 <script>
@@ -384,6 +379,84 @@ function audioInit(){
   var lfo=actx.createOscillator(); lfo.frequency.value=0.13;
   var lg=actx.createGain(); lg.gain.value=0.025;
   lfo.connect(lg); lg.connect(sg.gain); lfo.start();
+  startMusic();
+}
+
+/* ── Pirate shanty: a procedural 6/8 jig in A minor, loops with the intro ── */
+var musicGain=null, musicTimer=null, musicStart=0, musicStep=0;
+var EIGHTH=0.19, STEPS_PER_BAR=6;
+var MELODY=[                       /* 8 bars, 6 eighths each; 0 = rest */
+  [69,72,76,81,79,76],
+  [77,76,74,76,72,69],
+  [67,71,74,79,77,74],
+  [76,74,72,71,69,71],
+  [69,72,76,81,79,76],
+  [77,76,74,72,71,72],
+  [67,69,71,72,74,71],
+  [69,0,0,76,74,71]
+];
+var BASS=[45,41,43,40,45,41,43,45]; /* root per bar: A F G E A F G A */
+function mf(m){ return 440*Math.pow(2,(m-69)/12); }
+function pluck(f,t,dur,g){
+  [0,-5].forEach(function(cents){
+    var o=actx.createOscillator(); o.type="square";
+    o.frequency.value=f*Math.pow(2,cents/1200);
+    var lp=actx.createBiquadFilter(); lp.type="lowpass"; lp.frequency.value=1900;
+    var e=actx.createGain();
+    e.gain.setValueAtTime(0.0001,t);
+    e.gain.exponentialRampToValueAtTime(g,t+0.012);
+    e.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.connect(lp); lp.connect(e); e.connect(musicGain);
+    o.start(t); o.stop(t+dur+0.05);
+  });
+}
+function bassNote(f,t,dur,g){
+  var o=actx.createOscillator(); o.type="sawtooth"; o.frequency.value=f;
+  var lp=actx.createBiquadFilter(); lp.type="lowpass"; lp.frequency.value=320;
+  var e=actx.createGain();
+  e.gain.setValueAtTime(0.0001,t);
+  e.gain.exponentialRampToValueAtTime(g,t+0.02);
+  e.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.connect(lp); lp.connect(e); e.connect(musicGain);
+  o.start(t); o.stop(t+dur+0.05);
+}
+function drum(t,strong){
+  var o=actx.createOscillator(); o.type="sine";
+  o.frequency.setValueAtTime(64,t);
+  o.frequency.exponentialRampToValueAtTime(42,t+0.12);
+  var e=actx.createGain();
+  e.gain.setValueAtTime(strong?0.5:0.22,t);
+  e.gain.exponentialRampToValueAtTime(0.0001,t+0.22);
+  o.connect(e); e.connect(musicGain);
+  o.start(t); o.stop(t+0.3);
+  var len=Math.floor(actx.sampleRate*0.09);
+  var buf=actx.createBuffer(1,len,actx.sampleRate);
+  var d=buf.getChannelData(0);
+  for(var i=0;i<len;i++) d[i]=(Math.random()*2-1)*(1-i/len);
+  var src=actx.createBufferSource(); src.buffer=buf;
+  var f=actx.createBiquadFilter(); f.type="lowpass"; f.frequency.value=220;
+  var ng=actx.createGain(); ng.gain.value=strong?0.28:0.12;
+  src.connect(f); f.connect(ng); ng.connect(musicGain); src.start(t);
+}
+function startMusic(){
+  musicGain=actx.createGain(); musicGain.gain.value=0.8;
+  musicGain.connect(master);
+  musicStart=actx.currentTime+0.12; musicStep=0;
+  musicTimer=setInterval(function(){
+    if(!actx) return;
+    while(musicStart+musicStep*EIGHTH < actx.currentTime+0.6){
+      var t=musicStart+musicStep*EIGHTH;
+      var bar=Math.floor(musicStep/STEPS_PER_BAR)%MELODY.length;
+      var s=musicStep%STEPS_PER_BAR;
+      var note=MELODY[bar][s];
+      if(note) pluck(mf(note), t, 0.17, 0.05);
+      if(s===0) bassNote(mf(BASS[bar]), t, EIGHTH*3, 0.11);
+      if(s===3) bassNote(mf(BASS[bar]), t, EIGHTH*2.5, 0.07);
+      if(s===0) drum(t,true);
+      if(s===3) drum(t,false);
+      musicStep++;
+    }
+  }, 200);
 }
 function noiseBurst(dur, freq0, freq1, gain){
   if(!actx) return;
@@ -409,7 +482,13 @@ function toneAt(f,dur,type,gain,delay){
   o.connect(g); g.connect(master); o.start(t); o.stop(t+dur+0.1);
 }
 var snd={
-  thunder:function(big){ noiseBurst(big?1.6:0.9, big?900:500, 60, big?0.55:0.25); },
+  thunder:function(big){
+    noiseBurst(big?1.6:0.9, big?900:500, 60, big?0.55:0.25);
+    if(musicGain){ /* duck the shanty while the thunder rolls */
+      musicGain.gain.setTargetAtTime(big?0.3:0.5, actx.currentTime, 0.05);
+      musicGain.gain.setTargetAtTime(0.8, actx.currentTime+(big?1.1:0.7), 0.4);
+    }
+  },
   thud:function(){ toneAt(150,0.18,"triangle",0.5); noiseBurst(0.08,900,200,0.12); },
   chime:function(){ toneAt(523,0.16,"triangle",0.22); toneAt(659,0.16,"triangle",0.22,0.14); toneAt(784,0.3,"triangle",0.25,0.28); },
   boom:function(){ toneAt(72,1.6,"sine",0.7); noiseBurst(1.2,500,50,0.4); toneAt(110,1.2,"triangle",0.18,0.05); toneAt(220,2.2,"sine",0.1,0.4); toneAt(330,2.2,"sine",0.07,0.5); }
@@ -544,25 +623,24 @@ function tick(now){
   renderer.render(scene, camera);
 }
 
-/* ═══════════ Start gate ═══════════ */
-var gate=document.getElementById("gate");
+/* ═══════════ Autostart ═══════════
+   The cinematic starts immediately on page load; iOS only allows sound
+   after a user gesture, so the first tap anywhere enables the audio. */
 function start(){
   if(started) return;
   started=true;
-  audioInit();
-  gate.classList.add("hide");
   document.getElementById("skip").classList.add("show");
   t0=performance.now()/1000;
   requestAnimationFrame(tick);
 }
-gate.addEventListener("pointerdown", start);
-document.getElementById("playBtn").addEventListener("pointerdown", function(){ location.href="index.html"; });
-
-/* pre-render one dark frame behind the gate */
-renderer.render(scene,camera);
-
-/* allow automated testing: ?autoplay=1 starts immediately */
-if(/[?&]autoplay=1/.test(location.search)) start();
+function enableAudio(){
+  if(actx) return;
+  audioInit();
+  document.getElementById("soundHint").classList.add("hide");
+}
+window.addEventListener("pointerdown", enableAudio);
+document.getElementById("playBtn").addEventListener("pointerdown", function(){ location.href="game.html"; });
+start();
 })();
 </script>
 </body>
